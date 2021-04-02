@@ -1,0 +1,36 @@
+version: "3.9"
+services:
+  db:
+    image: postgres
+    container_name: db
+    restart: always
+    volumes:
+      - ./tmp/db:/var/lib/postgresql/data
+    ports:
+      - '5432:5432'
+    env_file:
+      - postgres.env
+    networks:
+      - ruby_net
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: api
+    env_file:
+      - .env
+    volumes:
+      - .:/api
+    ports:
+      - "3001:3000"
+    depends_on:
+      - db
+    networks:
+      - ruby_net
+    links:
+      - "db:db"
+    command: "tail -f /dev/null"
+    tty: true
+networks:
+  ruby_net:
+    driver: bridge
