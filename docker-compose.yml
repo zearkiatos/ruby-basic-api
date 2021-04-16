@@ -25,12 +25,11 @@ services:
       - "3001:3000"
     depends_on:
       - db
+    links:
+      - db
     networks:
       - ruby_net
-    links:
-      - "db:db"
-    command: "tail -f /dev/null"
     tty: true
-networks:
+networks: 
   ruby_net:
     driver: bridge

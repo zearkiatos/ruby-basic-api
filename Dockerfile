@@ -1,6 +1,6 @@
 FROM ruby:2.6.3-alpine
 
-RUN apk update && apk --no-cache --update add build-base postgresql-dev imagemagick xvfb qt5-qtbase qt5-qtbase-dev gst-plugins-base gstreamer-tools gstreamer curl
+RUN apk update && apk --no-cache --update add build-base postgresql-dev imagemagick xvfb qt5-qtbase qt5-qtbase-dev gst-plugins-base gstreamer-tools gstreamer curl tzdata
 
 RUN apk add --update nodejs npm
 RUN apk add --update yarn
@@ -13,10 +13,11 @@ RUN gem install bundle
 RUN bundle update --bundler
 RUN bundle install
 ADD . /app
+ENTRYPOINT ["bundle", "exec", "rails", "server", "-p", "3000", "-b", "0.0.0.0"]
 
-# COPY entrypoint.sh /usr/bin/
+
+# COPY ./docker/entrypoint.sh /usr/bin/
 # RUN chmod +x /usr/bin/entrypoint.sh
-# # ENTRYPOINT ["entrypoint.sh"]
 
 # Install capybara-webkit deps
 # RUN apt-get update \
