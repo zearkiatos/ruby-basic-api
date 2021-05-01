@@ -1,51 +1,118 @@
-image: docker:latest
-variables:
-  DOCKER_DRIVER: overlay
-  CRYPTOGRAPHY_DONT_BUILD_RUST: 1
-services:
-  - docker:dind
-
-before_script:
-    - docker info
-    - apk update
-    - apk upgrade
-    - apk add curl jq python3 python3-dev build-base libffi-dev libressl-dev gettext
-    - curl -O https://bootstrap.pypa.io/get-pip.py
-    - python3 get-pip.py
-    - pip install --upgrade pip
-    - echo "cryptography==3.3.2" > /tmp/requirements.txt
-    - pip3 install -U docker-compose -r /tmp/requirements.txt
-    - rm /tmp/requirements.txt
-
 stages:
   - build
-  - deploy-kubernetes
+  - test
+  - report
+  - deploy
 
-build-app:
-  stage: build
+
+.base:
+  image: ruby:2.6.3
+  before_script:
+    - gem install bundler --no-document
+    - bundle install --jobs $(nproc) "${FLAGS[@]}"
+
+.base_db:
+  extends: .base
+  services:
+    - postgres:latest
   variables:
-    ENVIRONMENT: 'staging'
+    POSTGRES_DB: ${POSTGRES_DB}
+    POSTGRES_USER: ${POSTGRES_USER}
+    POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    RAILS_ENV: gitlab
+  before_script:
+    - apt-get update -qq && apt-get install -yqq nodejs
+    - gem install bundler --no-document
+    - bundle install --jobs $(nproc) "${FLAGS[@]}" --path=vendor
+    - bundle exec rake db:setup
+
+build:rubocop:
+  extends: .base
+  stage: build
   script:
-    - touch .env
-    - echo "ENVIRONMENT=${ENVIRONMENT}" > .env
-    - echo "POSTGRES_USER=${POSTGRES_USER}" >> .env
-    - echo "POSTGRES_PASSWORD=${POSTGRES_PASSWORD}" >> .env
-    - echo "HOST_NAME=${HOST_NAME}" >> .env
-    - echo "POSTGRES_DB=${POSTGRES_DB}" >> .env
-    - echo "DATABASE_URL=${DATABASE_URL}" >> .env
-    - docker-compose up -d
-  only:
-    - branches
-  
-deploy_review:
-  stage: deploy-kubernetes
+    - bundle exec rubocop
+
+build:assets_precompile:
+  extends: .base_db
+  stage: build
   script:
-    - echo "Deploy a review app 🚀"
-  environment:
-    name: review/$CI_COMMIT_REF_NAME
-    url: https://$CI_ENVIRONMENT_SLUG.example.com
+    - bundle exec rake assets:precompile
+
+test:bundle_audit:
+  extends: .base
+  allow_failure: true
+  script:
+    - bundle exec bundle audit check --update
+
+test:brakeman:
+  extends: .base
+  stage: test
+  allow_failure: true
+  artifacts:
+    name: brakeman_report
+    when: always
+    paths:
+      - brakeman/
   only:
-    - branches
-  except:
     - master
+  script:
+    - bundle exec brakeman --format html -o brakeman/index.html
     
+test:dawnscanner:
+  extends: .base
+  stage: test
+  allow_failure: true
+  artifacts:
+    name: dawnscanner_report
+    when: always
+    paths:
+      - dawnscanner
+  only:
+    - master
+  script:
+    - mkdir dawnscanner
+    - bundle exec dawn --html -zF dawnscanner/index.html
+
+pages:
+  extends: .base
+  stage: report
+  allow_failure: true
+  dependencies:
+    - test:brakeman
+    - test:dawnscanner
+    - test:erd
+    - test:rspec
+  artifacts:
+    name: my_app_artifacts
+    paths:
+      - public/brakeman
+      - public/coverage
+      - public/dawnscanner
+      - public/erd.pdf
+  only:
+    - master
+  script:
+    - mv brakeman public/ || true
+    - mv coverage public/ || true
+    - mv dawnscanner public/ || true
+    - mv erd.pdf public/ || true
+
+deploy:staging:
+  extends: .base
+  stage: deploy
+  only:
+    - staging
+  script:
+    - echo "Deploying to Staging..."
+
+deploy:production:
+  extends: .base
+  stage: deploy
+  when: manual
+  environment:
+    name: production
+    url: https://example.com
+  only:
+    - production
+  script:
+    - echo "Deploying to Production..."
