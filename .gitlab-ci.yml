@@ -44,6 +44,5 @@ deploy_review:
   environment:
     name: review/$CI_COMMIT_REF_NAME
     url: https://$CI_ENVIRONMENT_SLUG.$APPS_DOMAIN
-    - branches
   only:
     - branches
