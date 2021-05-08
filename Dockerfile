@@ -13,7 +13,8 @@ RUN gem install bundle
 RUN bundle update --bundler
 RUN bundle install
 ADD . /app
-ENTRYPOINT ["bundle", "exec", "rails", "server", "-p", "3000", "-b", "0.0.0.0"]
+RUN chmod +x docker/entrypoint.sh
+ENTRYPOINT ["sh", "docker/entrypoint.sh"]
 
 
 # COPY ./docker/entrypoint.sh /usr/bin/
